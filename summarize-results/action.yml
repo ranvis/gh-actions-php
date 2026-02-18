@@ -1,0 +1,27 @@
+name: 'Summarize PHP Test Results'
+description: 'Collects PHP test JSON artifacts and generates GitHub Step Summary'
+inputs:
+  basename:
+    description: 'Basename of test result files'
+    required: false
+    default: test-results-7bc8613d-25b6-42e0-b9e3-af3b292e7f98
+runs:
+  using: composite
+  steps:
+    - name: Set up variables
+      shell: bash
+      run: |
+        echo "DEST_DIR=.tmp-7bc8613d-25b6-42e0-b9e3-af3b292e7f98" >> $GITHUB_ENV
+
+    - name: Download all results
+      uses: actions/download-artifact@v4
+      with:
+        path: ${{ env.DEST_DIR }}
+        pattern: ${{ inputs.basename }}-*
+        merge-multiple: true
+
+    - name: Generate summary
+      shell: bash
+      run: |
+        perl '${{ github.action_path }}/summarize-test-results.pl' ${{ env.DEST_DIR }}/*.json >> $GITHUB_STEP_SUMMARY
+        rm -rf ${{ env.DEST_DIR }}

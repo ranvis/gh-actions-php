@@ -1,0 +1,45 @@
+name: 'Save PHP Test Result'
+description: 'Wraps run-tests.php output in a JSON container with metadata'
+inputs:
+  id:
+    description: 'Unique ID for this test set'
+    required: true
+  outcome:
+    description: 'Outcome of the test step (steps.test.outcome)'
+    required: true
+  test-log:
+    description: 'Path to the test output log file to collect'
+    required: true
+  basename:
+    description: 'Basename of test result files'
+    required: false
+    default: test-results-7bc8613d-25b6-42e0-b9e3-af3b292e7f98
+runs:
+  using: composite
+  steps:
+    - name: Set up variables
+      shell: bash
+      run: |
+        KEY='${{ inputs.basename }}-${{ inputs.id }}'
+        echo "ARTIFACT_NAME=$KEY" >> $GITHUB_ENV
+        echo "FILE_NAME=$KEY.json" >> $GITHUB_ENV
+
+    - name: Run parser
+      shell: bash
+      run: |
+        echo -n '' >> ${{ inputs.test-log }}
+        perl '${{ github.action_path }}/save-test-result.pl' \
+          --id '${{ inputs.id }}' \
+          --outcome '${{ inputs.outcome }}' \
+          -o '${{ env.FILE_NAME }}' < '${{ inputs.test-log }}'
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.ARTIFACT_NAME }}
+        path: ${{ env.FILE_NAME }}
+
+    - name: Remove temp file
+      shell: bash
+      run: |
+        rm -f '${{ env.FILE_NAME }}'
