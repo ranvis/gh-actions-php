@@ -5,10 +5,11 @@ use v5.30;
 use warnings FATAL => qw(numeric syntax uninitialized);
 use utf8;
 use Getopt::Long 2.33 ();
-use List::Util qw(sum);
 use JSON qw(decode_json);
+use List::Util qw(uniqstr sum sum0);
 
 exit 2 if (!Getopt::Long::Parser->new(config => [qw(bundling no_getopt_compat)])->getoptions(
+	'glob!' => \my $glob,
 ));
 
 my $metricPat = qr/Number of tests|Tests \w+|Expected \w+|Time taken/a;
@@ -19,40 +20,56 @@ use constant {
 	T_WARNED => 'Tests warned',
 	T_FAILED => 'Tests failed',
 	T_BORKED => 'Tests borked',
-	T_EXPECTED => 'Expected fail',
+	T_XFAIL => 'Expected fail',
 	T_LEAKED => 'Tests leaked',
 	T_TIME => 'Time taken',
 };
+my %metricTitle = (
+	T_COUNT, 'Total',
+	T_PASSED, 'Pass',
+	T_SKIPPED, 'Skip',
+	T_WARNED, 'Warn',
+	T_FAILED, 'Fail',
+	T_BORKED, 'Bork',
+	T_XFAIL, 'XFail',
+	T_LEAKED, 'Leak',
+	T_TIME, 'Time',
+);
 
-my @files = @ARGV;
-my @metrics = (T_COUNT, T_PASSED, T_SKIPPED, T_WARNED, T_FAILED, T_BORKED, T_EXPECTED, T_LEAKED, T_TIME);
+my @filePaths = uniqstr @ARGV;
+@filePaths = uniqstr map { glob(qq{"$_"}) } @filePaths if ($glob);
+my @metrics = (T_COUNT, T_PASSED, T_SKIPPED, T_WARNED, T_FAILED, T_BORKED, T_XFAIL, T_LEAKED, T_TIME);
 
 say "### 📊 Combined Test Report";
 say "";
-say "| ID | 🧪 | " . join(" | ", map { getMetricTitle($_) } @metrics) . " |";
-say "|:---| --- | " . join("|", ("---:") x scalar @metrics) . "|";
+say mdTable("ID", "🧪", map { $metricTitle{$_} // $_ } @metrics);
+say mdTable(':---', '---', ("---:") x scalar @metrics, {pad => 0});
 
 my (@failedIds, @allDetails);
-for my $f (@files) {
-	open my $fh, "<", $f;
+for my $filePath (@filePaths) {
+	open(my $fh, '<', $filePath) or do {
+		warn "$filePath: $!";
+		next;
+	};
 	my $data = decode_json(do { local $/; <$fh> });
 	my %result = parseLog($data->{log});
 	my $id = $data->{id} // 'ID missing';
 	my $t = $result{tests};
-	my $row = "| $id | ";
 	my $passed = (($data->{outcome} // '') eq 'success') && $t->{+T_COUNT};
-	my $total = sum(map { $t->{$_} // 0 } (T_PASSED, T_SKIPPED, T_EXPECTED));
+	my $total = sum(map { $t->{$_} // 0 } (T_PASSED, T_SKIPPED, T_XFAIL));
 	$passed = $passed && $t->{+T_COUNT} == $total;
 	push(@failedIds, $id) if (!$passed);
-	$row .= ($passed ? "✔" : ($t->{+T_FAILED} || $t->{+T_BORKED}) ? "❌" : "⚠️") . " | ";
-	$row .= join(" | ", map { $t->{$_} // "-" } @metrics);
-	$row .= " |\n";
-	print $row;
-	
+	my @row = (
+		$id,
+		$passed ? "✔" : ($t->{+T_FAILED} || $t->{+T_BORKED}) ? "❌" : "⚠️",
+		map { $t->{$_} || "-" } @metrics,
+	);
+	say mdTable(@row);
+
 	my $details = $result{details};
 	if ($details && @$details) {
 		my %flags = map { $_ =~ /^([A-Z]+)/ ? ($1 => 1) : () } @$details;
-		my $sign = $flags{BORK} || $flags{FAIL} ? "❌" : $flags{XFAIL} ? "⚠️" : "💬";
+		my $sign = ($flags{BORK} || $flags{FAIL}) ? "❌" : $flags{XFAIL} ? "⚠️" : "💬";
 		push(@allDetails, "#### $sign Non-PASS list: $id");
 		push(@allDetails, "```\n" . join("\n", @$details) . "\n```\n");
 	} else {
@@ -67,6 +84,10 @@ if (@failedIds) {
 	exit 1;
 }
 exit;
+
+sub mdTable {
+	return "| " . join(" | ", @_) . " |";
+}
 
 sub parseLog {
 	my ($log) = @_;
@@ -83,10 +104,14 @@ sub parseLog {
 	return %result;
 }
 
-sub getMetricTitle {
-	my ($metric) = @_;
-	$metric =~ s/^Tests (\w)/uc($1)/e;
-	$metric =~ s/^Expected\b/Exp./;
-	$metric = 'Tests' if ($metric eq T_COUNT);
-	return $metric;
+sub mdTable {
+	my (@cells) = @_;
+	return "" if (!@cells);
+	my %opt = do {
+		if (ref $cells[$#cells]) {
+			pop(@cells)->%*;
+		} else { () }
+	};
+	@cells = map { " $_ " } @cells if ($opt{pad} // 1);
+	return "|" . join("|", @cells) . "|";
 }
