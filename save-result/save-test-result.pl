@@ -23,5 +23,5 @@ my %result = (
 	log => $log,
 );
 
-open(my $fh, '>', $path) or die $!;
+open(my $fh, '>', $path) or die "$path: $!";
 print $fh encode_json(\%result);

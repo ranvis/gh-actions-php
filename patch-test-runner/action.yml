@@ -1,0 +1,14 @@
+name: 'Patch PHP test runner to show sub-seconds'
+description: 'Patch run-tests.php'
+inputs:
+  path:
+    description: 'Space-separated list of file paths to patch'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Patch run-tests.php
+      shell: bash
+      run: |
+        perl "${{ github.action_path }}/patch-runner.pl" ${{ inputs.path }}
