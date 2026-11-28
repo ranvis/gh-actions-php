@@ -14,7 +14,7 @@ runs:
         echo "DEST_DIR=.tmp-7bc8613d-25b6-42e0-b9e3-af3b292e7f98" >> $GITHUB_ENV
 
     - name: Download all results
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         path: ${{ env.DEST_DIR }}
         pattern: ${{ inputs.basename }}-*
